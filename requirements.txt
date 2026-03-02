@@ -2,18 +2,32 @@
 #    uv pip compile pyproject.toml -o requirements.txt
 beautifulsoup4==4.12.3
     # via pylibrus (pyproject.toml)
+boto3==1.42.59
+    # via pylibrus (pyproject.toml)
+botocore==1.42.59
+    # via
+    #   boto3
+    #   s3transfer
 certifi==2024.8.30
     # via requests
 charset-normalizer==3.4.0
     # via requests
-greenlet==3.1.1
-    # via sqlalchemy
 idna==3.10
     # via requests
+jmespath==1.1.0
+    # via
+    #   boto3
+    #   botocore
+python-dateutil==2.9.0.post0
+    # via botocore
 requests==2.32.3
     # via pylibrus (pyproject.toml)
+s3transfer==0.16.0
+    # via boto3
 six==1.16.0
-    # via user-agent
+    # via
+    #   python-dateutil
+    #   user-agent
 soupsieve==2.6
     # via beautifulsoup4
 sqlalchemy==2.0.36
@@ -21,6 +35,8 @@ sqlalchemy==2.0.36
 typing-extensions==4.12.2
     # via sqlalchemy
 urllib3==2.2.3
-    # via requests
+    # via
+    #   botocore
+    #   requests
 user-agent==0.1.10
     # via pylibrus (pyproject.toml)
