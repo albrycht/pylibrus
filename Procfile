@@ -1,1 +1,1 @@
-cron: */5 * * * * python src/pylibrus/pylibrus.py
+cron: */5 * * * * uv run src/pylibrus/pylibrus.py
