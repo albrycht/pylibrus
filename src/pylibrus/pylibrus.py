@@ -438,16 +438,30 @@ class LibrusScraper:
             logger.info(f"Could not load {self._cookie_path}: {e}")
             return {}
 
-    def load_cookies_from_file(self) -> dict:
+    def load_cookies_from_file(self) -> None:
+        # Cookies are stored as list[{"name","value","domain","path"}] to preserve
+        # per-domain state. The legacy flat {name: value} format is discarded —
+        # cross-domain name collisions (SDZIENNIKSID, DZIENNIKSID exist on api and
+        # synergia with different values) made it send the wrong session id.
         cookies_per_login = self.load_cookies_per_login()
         cookies = cookies_per_login.get(self._login)
-        if not cookies:
-            logger.debug(f"No cookies for {self._login}")
-        self._session.cookies.update(requests.utils.cookiejar_from_dict(cookies))
+        if not isinstance(cookies, list):
+            if cookies:
+                logger.debug(f"Ignoring legacy cookie format for {self._login}")
+            return
+        for entry in cookies:
+            cookie = requests.cookies.create_cookie(
+                name=entry["name"], value=entry["value"],
+                domain=entry.get("domain", ""), path=entry.get("path", "/"),
+            )
+            self._session.cookies.set_cookie(cookie)
 
     def store_cookies_in_file(self):
         cookies_per_login = self.load_cookies_per_login()
-        cookies_per_login[self._login] = self._session.cookies.get_dict()
+        cookies_per_login[self._login] = [
+            {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
+            for c in self._session.cookies
+        ]
         self._cookie_path.write_text(json.dumps(cookies_per_login))
 
     def _set_headers(self, referer, kwargs):
@@ -499,8 +513,17 @@ class LibrusScraper:
         self._session.cookies.clear()
 
     def are_cookies_valid(self):
-        msgs = self.msgs_from_folder(self._pylibrus_config.inbox_folder_id)
-        return len(msgs) > 0
+        has_oauth_token = any(
+            c.name == "oauth_token" and c.domain == "synergia.librus.pl"
+            for c in self._session.cookies
+        )
+        if not has_oauth_token:
+            return False
+        resp = self._get(
+            self.msg_folder_path(self._pylibrus_config.inbox_folder_id),
+            referer=self.synergia_url_from_path("/rodzic/index"),
+        )
+        return "Brak dostępu" not in resp.text
 
     @staticmethod
     def _gen_x_baner() -> str:
