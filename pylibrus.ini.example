@@ -20,7 +20,7 @@
 # max_age_of_sending_msg_days=4
 
 ; Should debug messages be enabled.
-; Posible values: true, false
+; Possible values: true, false
 # debug=false
 
 ; This parameter tell pylibrus how long it should sleep
@@ -45,3 +45,20 @@ email_dest=
 #librus_user=
 #librus_pass=
 #webhook=
+#webhook_attachments_source=librus_link
+
+; This is example configuration for forwarding messages to webhook with working attachments links via s3 bucket
+; Links from s3 bucket will work for 7 days
+; Please setup your bucket to auto-delete files after 7 days
+#[user:ChildName3]
+#librus_user=
+#librus_pass=
+#webhook=
+#webhook_attachments_source=s3://my-school-bucket/pylibrus-attachments
+#s3_region=eu-central-1
+#s3_access_key_id=AKIAEXAMPLE
+#s3_secret_access_key=your-secret-key
+; Optional for temporary AWS credentials:
+#s3_session_token=
+; Optional for S3-compatible storage:
+#s3_endpoint_url=
