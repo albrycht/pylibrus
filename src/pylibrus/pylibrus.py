@@ -9,6 +9,7 @@ import json
 import logging
 import mimetypes
 import os
+import random
 import re
 import smtplib
 import sys
@@ -501,30 +502,65 @@ class LibrusScraper:
         msgs = self.msgs_from_folder(self._pylibrus_config.inbox_folder_id)
         return len(msgs) > 0
 
+    @staticmethod
+    def _gen_x_baner() -> str:
+        # Mirrors the browser JS anti-bot: shift every char code by +20, join with "_"
+        def shift(s: str) -> str:
+            return "".join(chr(ord(c) + 20) for c in s)
+        return shift(str(random.random())) + "_" + shift(str(int(time.time() * 1000)))
+
     def __enter__(self):
         if self.are_cookies_valid():
             logger.debug(f"cookies valid for {self._login}")
             return self
         logger.debug(f"cookies are not valid from {self._login}, login")
         self.clear_cookies()
+
+        # The OAuth flow must begin at synergia's /loguj/portalRodzina so that
+        # synergia generates a `state` and later activates the session by setting
+        # the oauth_token cookie. Starting directly at api.librus.pl/OAuth/...
+        # completes login but leaves synergia with no oauth_token, so
+        # /rodzic/index and /wiadomosci/... return "Brak dostępu".
+        portal_ref = "https://portal.librus.pl/"
+        init_resp = self._get(
+            f"/loguj/portalRodzina?v={int(time.time() * 1000)}",
+            referer=portal_ref, allow_redirects=False,
+        )
+        state_redirect = init_resp.headers.get("Location", "")
+        if "state=" not in state_redirect:
+            raise RuntimeError(f"Expected state in Location from /loguj/portalRodzina, got: {state_redirect}")
+        self._get(state_redirect, referer=portal_ref)
+
         oauth_auth_frag = "/OAuth/Authorization?client_id=46"
         oauth_auth_url = self.api_url_from_path(oauth_auth_frag)
-        oauth_2fa_frag = "/OAuth/Authorization/2FA?client_id=46"
 
-        self._api_get(
-            f"{oauth_auth_frag}&response_type=code&scope=mydata",
-            referer="https://portal.librus.pl/rodzina/synergia/loguj",
-        )
+        self._api_get(oauth_auth_frag, referer=oauth_auth_url)
         self._api_post(
             oauth_auth_frag,
             referer=oauth_auth_url,
-            data={
-                "action": "login",
-                "login": self._login,
-                "pass": self._passwd,
+            data={"action": "login", "login": self._login, "pass": self._passwd},
+            headers={
+                "X-Requested-With": "XMLHttpRequest",
+                "Origin": "https://api.librus.pl",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "x-baner": self._gen_x_baner(),
             },
         )
-        self._api_get(oauth_2fa_frag, referer=oauth_auth_url)
+
+        for frag in ("/OAuth/Authorization/2FA?client_id=46",
+                     "/OAuth/Authorization/PerformLogin?client_id=46"):
+            self._api_get(frag, referer=oauth_auth_url, allow_redirects=False)
+        grant_resp = self._api_get("/OAuth/Authorization/Grant?client_id=46",
+                                   referer=oauth_auth_url, allow_redirects=False)
+        final_url = grant_resp.headers.get("Location", "")
+        if not final_url:
+            raise RuntimeError("Missing Location from /OAuth/Authorization/Grant")
+        self._get(final_url, referer=oauth_auth_url)
+
+        syn_cookies = {c.name for c in self._session.cookies if c.domain == "synergia.librus.pl"}
+        if "oauth_token" not in syn_cookies:
+            raise RuntimeError(f"Login failed: no oauth_token cookie set on synergia. Cookies: {syn_cookies}")
+
         self.store_cookies_in_file()
         return self
 
